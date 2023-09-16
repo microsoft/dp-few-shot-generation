@@ -1,0 +1,59 @@
+[tool.poetry]
+name = "lmapi"
+version = "0.0.1dev14"
+description = ""
+authors = ["Richard Shin <richard.shin@microsoft.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+aiohttp = "^3.0"
+python = "^3.10"
+tiktoken = "^0.3.0"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.3.0"
+pyright = "^1.1.303"
+pytest = "^7.3.1"
+pytest-asyncio = "^0.21.0"
+ruff = "^0.0.261"
+
+[tool.black]
+skip-magic-trailing-comma = true
+target-version = ["py310"]
+
+[tool.pyright]
+include = [
+  "src",
+  "tests",
+]
+reportUnnecessaryCast = "error"
+reportUnnecessaryTypeIgnoreComment = "error"
+
+[tool.ruff]
+# See hhttps://beta.ruff.rs/docs/rules/ for a list of rules.
+# This list is kept in the same order as the documentation.
+select = [
+  "E",
+  "F",
+  "W",
+  "I",
+  "UP",
+  "B",
+  "C4",
+  "RUF",
+]
+ignore = [
+  # Do not perform function call in argument defaults	
+  "B008",
+  # Line too long
+  "E501",
+]
+target-version = "py310"
+src = [
+  "src",
+  "tests",
+]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
