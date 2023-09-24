@@ -17,7 +17,7 @@ def api_openai_com(model_name: str) -> OpenAI:
         "https://api.openai.com/v1/completions",
         # This list is taken from
         # https://github.com/openai/tiktoken/blob/095924e02c85617df6889698d94515f91666c7ea/tiktoken/model.py#L13-L53
-        # and modified, currently to accomodate how text-davinci-003 can actually produce <|fim_...|> tokens.
+        # and modified, currently to accommodate how text-davinci-003 can actually produce <|fim_...|> tokens.
         {
             # chat
             "gpt-4": "cl100k_base",
