@@ -144,14 +144,13 @@ class TokenBucket:
 
         Supply a negative number to subtract from the rate. However, the
         negative number cannot cause the rate to become negative."""
-        new_rate = self.refill_rate_micros + round(delta * _MICROS_RATIO)
-        assert new_rate >= 0, "Cannot have a negative refill rate"
+        new_rate_micros = self.refill_rate_micros + round(delta * _MICROS_RATIO)
+        assert new_rate_micros >= 0, "Cannot have a negative refill rate"
         if min_rate is not None:
-            new_rate = max(new_rate, round(min_rate * _MICROS_RATIO))
+            new_rate_micros = max(new_rate_micros, round(min_rate * _MICROS_RATIO))
         if max_rate is not None:
-            new_rate = min(new_rate, round(max_rate * _MICROS_RATIO))
-        self.refill_rate_micros = new_rate
-        self.reset_rate(new_rate)
+            new_rate_micros = min(new_rate_micros, round(max_rate * _MICROS_RATIO))
+        self.reset_rate(new_rate_micros)
 
     def multiply_rate(
         self, ratio: float, min_rate: float | None = None, max_rate: float | None = None
@@ -159,19 +158,19 @@ class TokenBucket:
         """Apply a multiplicative factor to the refill rate."""
 
         assert ratio >= 0, "Cannot have a negative ratio"
-        new_rate = round(self.refill_rate_micros * ratio)
+        new_rate_micros = round(self.refill_rate_micros * ratio)
         if min_rate is not None:
-            new_rate = max(new_rate, round(min_rate * _MICROS_RATIO))
+            new_rate_micros = max(new_rate_micros, round(min_rate * _MICROS_RATIO))
         if max_rate is not None:
-            new_rate = min(new_rate, round(max_rate * _MICROS_RATIO))
-        self.reset_rate(new_rate)
+            new_rate_micros = min(new_rate_micros, round(max_rate * _MICROS_RATIO))
+        self.reset_rate(new_rate_micros)
 
-    def reset_rate(self, new_rate: float) -> None:
+    def reset_rate(self, new_rate_micros: int) -> None:
         """Reset the refill rate."""
         # Refill tokens with the previous rate, before updating the rate.
         self._update_level()
 
-        self.refill_rate_micros = round(new_rate * _MICROS_RATIO)
+        self.refill_rate_micros = new_rate_micros
         # Tell the task waiting for tokens to refill to wake up so that we can
         # recompute how much longer it should sleep, with the current rate.
         if self._next_token_refill:

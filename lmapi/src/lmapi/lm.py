@@ -58,7 +58,21 @@ class CompletionsSettings:
     logprobs: int | None = None
     echo: bool | None = None
     logit_bias: Mapping[int, float] | None = None
-    top_p: float | None=None
+    top_p: float | None = None
+
+
+@dataclass
+class Capabilities:
+    # Maximum context size of the model, in number of tokens
+    max_context_length: int
+
+    # Maximum value allowed for for `logprobs` in CompletionsSettings
+    max_top_logprobs: int
+
+    # What we're allowed for `logit_bias`
+    min_logit_bias: float
+    max_logit_bias: float
+    max_num_tokens_for_logit_bias: int
 
 
 class LM(Protocol):
@@ -77,12 +91,12 @@ class LM(Protocol):
     ) -> Sequence[AsyncGenerator[SampledToken, None]]:
         """Returns completions in a streaming fashion as async generators of SampledText.
 
-        To ensure that the HTTP connection to GPT is closed quickly, use `contextlib.aclosing`:
+        To ensure that cleanup happens quickly, use `contextlib.aclosing`:
         ```
         # streams is a sequence with length equal to `n` in the settings,
         # the number of completions to generate given the prompt.
         # In this example, we assume n = 1.
-        streams = gpt.streaming_completions(prompt)
+        streams = await lm.streaming_completions(prompt)
         [stream] = streams
         async with contextlib.aclosing(stream):
             async for sampled_text in stream:
@@ -91,12 +105,17 @@ class LM(Protocol):
                     break
         ```
 
-        This pattern ensures that when the loop exits with the `break`, `it.aclose()` is called immediately,
-        rather than only when `it` is garbage collected.
+        This pattern ensures that when the loop exits with the `break`,
+        `stream.aclose()` is called immediately,
+        rather than only when `stream` is garbage collected.
         """
         ...
 
     @property
     def encoding(self) -> tiktoken.Encoding:
         """Returns the encoding scheme the model uses."""
+        ...
+
+    @property
+    def capabilities(self) -> Capabilities:
         ...

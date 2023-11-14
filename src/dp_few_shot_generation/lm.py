@@ -5,16 +5,27 @@ import os
 from collections.abc import Sequence, Set
 
 from lmapi.async_tools import limits
-from lmapi.auth import OpenAiApiKey
-from lmapi.lm import LM, CompletionsSettings
+from lmapi.lm import LM, Capabilities, CompletionsSettings
 from lmapi.openai import OpenAI
+from lmapi.openai_auth import openai_with_api_key
 
 from dp_few_shot_generation.prob_utils import log_normalize
+
+# TODO: Vary max_context_length and other settings depending on the model
+capabilities = Capabilities(
+    max_context_length=2048,
+    max_top_logprobs=100,
+    min_logit_bias=-100,
+    max_logit_bias=100,
+    max_num_tokens_for_logit_bias=100,
+)
 
 
 def api_openai_com(model_name: str) -> OpenAI:
     return OpenAI.create(
-        "https://api.openai.com/v1/completions",
+        openai_with_api_key(
+            "https://api.openai.com/v1/completions", os.environ["OPENAI_API_KEY"]
+        ),
         # This list is taken from
         # https://github.com/openai/tiktoken/blob/095924e02c85617df6889698d94515f91666c7ea/tiktoken/model.py#L13-L53
         # and modified, currently to accommodate how text-davinci-003 can actually produce <|fim_...|> tokens.
@@ -59,15 +70,10 @@ def api_openai_com(model_name: str) -> OpenAI:
             # open source
             "gpt2": "gpt2",
         }[model_name],
-        OpenAiApiKey(os.environ["OPENAI_API_KEY"]),
+        capabilities,
         limits.AdaptiveLimiter(),
         {"model": model_name},
     )
-
-
-MAX_TOP_LOGPROBS = 100
-MAX_LOGIT_BIAS = 100
-MIN_LOGIT_BIAS = -100
 
 
 async def next_logprobs(
@@ -76,7 +82,7 @@ async def next_logprobs(
     # TODO: Don't hardcode "100" here
     [sampled_tokens] = await self.completions(
         prompt,
-        CompletionsSettings(n=1, max_tokens=1, logprobs=100, stop=["<test_for_stop>"]),
+        CompletionsSettings(n=1, max_tokens=1, logprobs=self.capabilities.max_top_logprobs, stop=["<test_for_stop>"]),
     )
     if len(sampled_tokens) == 0:
         if isinstance(prompt, str):
@@ -103,16 +109,18 @@ async def normalized_logprobs_for_chosen_tokens(
     The returned probability distribution is normalized over just the chosen tokens."""
 
     assert (
-        len(chosen_tokens) <= MAX_TOP_LOGPROBS
-    ), f"chosen_tokens must be <= {MAX_TOP_LOGPROBS} in length"
+        len(chosen_tokens) <= self.capabilities.max_num_tokens_for_logit_bias
+    ), f"chosen_tokens must be <= {self.capabilities.max_num_tokens_for_logit_bias} in length"
 
-    logit_bias = {token_id: MAX_LOGIT_BIAS for token_id in chosen_tokens}
+    logit_bias = {
+        token_id: self.capabilities.max_logit_bias for token_id in chosen_tokens
+    }
     [sampled_tokens] = await self.completions(
         prompt,
         CompletionsSettings(
             n=1,
             max_tokens=1,
-            logprobs=MAX_TOP_LOGPROBS,
+            logprobs=self.capabilities.max_top_logprobs,
             logit_bias=logit_bias,
             top_p=top_p,
         ),

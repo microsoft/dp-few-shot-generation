@@ -23,8 +23,15 @@ import tiktoken
 
 from lmapi.async_tools import asyncitertools, limits
 from lmapi.async_tools.server_sent_events import ServerSentEvent, parse_event_stream
-from lmapi.auth import AuthorizationProvider
-from lmapi.lm import LM, Completion, CompletionsSettings, SampledToken, TokenWithLogprob
+from lmapi.http_settings import HttpSettingsProvider
+from lmapi.lm import (
+    LM,
+    Capabilities,
+    Completion,
+    CompletionsSettings,
+    SampledToken,
+    TokenWithLogprob,
+)
 
 client_session: ContextVar[aiohttp.ClientSession] = ContextVar("client_session")
 
@@ -103,18 +110,18 @@ class OpenAI:
         def _check_protocol(self) -> LM:
             return self
 
-    url: str
-    auth_provider: AuthorizationProvider
+    http_settings_provider: HttpSettingsProvider
     encoding: tiktoken.Encoding
     default_completion_settings: dict[str, Any]
     additional_headers: dict[str, str]
+    capabilities: Capabilities
     request_limiter: limits.AdaptiveLimiter | None = None
 
     @staticmethod
     def create(
-        url: str,
+        http_settings_provider: HttpSettingsProvider,
         encoding_or_name: str | tiktoken.Encoding,
-        auth_provider: AuthorizationProvider,
+        capabilities: Capabilities,
         request_limiter: limits.AdaptiveLimiter | None = None,
         default_completion_settings: dict[str, Any] | None = None,
         additional_headers: dict[str, Any] | None = None,
@@ -126,11 +133,11 @@ class OpenAI:
         )
 
         return OpenAI(
-            url,
-            auth_provider,
+            http_settings_provider,
             encoding,
             default_completion_settings or {},
             additional_headers or {},
+            capabilities,
             request_limiter,
         )
 
@@ -159,9 +166,11 @@ class OpenAI:
         `client_session` is the same one used to construct this object.
         """
         params = self._make_params(prompt, settings)
+        conn_settings = self.http_settings_provider()
+
         async with client_session.get().post(
-            self.url,
-            headers={**self.auth_provider.headers(), **self.additional_headers},
+            conn_settings.url,
+            headers={**conn_settings.headers, **self.additional_headers},
             json=params,
         ) as response:
             if response.status != 200:
@@ -181,7 +190,7 @@ class OpenAI:
     async def streaming_completions(
         self, prompt: str | Sequence[int], settings: CompletionsSettings | None = None
     ) -> Sequence[AsyncGenerator[SampledToken, None]]:
-        """Please see docstring for Gpt.streaming_completions."""
+        """Please see docstring for LM.streaming_completions."""
 
         params = self._make_params(prompt, settings)
         n = params.get("n", 1)
@@ -281,9 +290,10 @@ class OpenAI:
     ) -> AsyncIterator[aiohttp.ClientResponse]:
         """Call as: `with gpt_impl._streaming_completions_client_response(params) as response: ..."""
 
+        conn_settings = self.http_settings_provider()
         async with client_session.get().post(
-            self.url,
-            headers={**self.auth_provider.headers(), **self.additional_headers},
+            conn_settings.url,
+            headers={**conn_settings.headers, **self.additional_headers},
             json={**params, "stream": True},
         ) as response:
             if response.status != 200:
