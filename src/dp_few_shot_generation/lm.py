@@ -7,12 +7,12 @@ from collections.abc import Sequence, Set
 from lmapi.async_tools import limits
 from lmapi.lm import LM, Capabilities, CompletionsSettings
 from lmapi.openai import OpenAI
-from lmapi.openai_auth import openai_with_api_key
+from lmapi.openai_auth import aoai_with_api_key, openai_with_api_key
 
 from dp_few_shot_generation.prob_utils import log_normalize
 
 # TODO: Vary max_context_length and other settings depending on the model
-capabilities = Capabilities(
+DEFAULT_CAPABILITIES = Capabilities(
     max_context_length=2048,
     max_top_logprobs=100,
     min_logit_bias=-100,
@@ -20,59 +20,78 @@ capabilities = Capabilities(
     max_num_tokens_for_logit_bias=100,
 )
 
+# This list is taken from
+# https://github.com/openai/tiktoken/blob/095924e02c85617df6889698d94515f91666c7ea/tiktoken/model.py#L13-L53
+# and modified, currently to accommodate how text-davinci-003 can actually produce <|fim_...|> tokens.
+OPENAI_MODEL_NAME_TO_TOKENIZER_NAME = {
+    # chat
+    "gpt-4": "cl100k_base",
+    "gpt-3.5-turbo": "cl100k_base",
+    # text
+    "text-davinci-003": "p50k_edit",
+    "text-davinci-002": "p50k_base",
+    "text-davinci-001": "r50k_base",
+    "text-curie-001": "r50k_base",
+    "text-babbage-001": "r50k_base",
+    "text-ada-001": "r50k_base",
+    "davinci": "r50k_base",
+    "curie": "r50k_base",
+    "babbage": "r50k_base",
+    "ada": "r50k_base",
+    # code
+    "code-davinci-002": "p50k_base",
+    "code-davinci-001": "p50k_base",
+    "code-cushman-002": "p50k_base",
+    "code-cushman-001": "p50k_base",
+    "davinci-codex": "p50k_base",
+    "cushman-codex": "p50k_base",
+    # edit
+    "text-davinci-edit-001": "p50k_edit",
+    "code-davinci-edit-001": "p50k_edit",
+    # embeddings
+    "text-embedding-ada-002": "cl100k_base",
+    # old embeddings
+    "text-similarity-davinci-001": "r50k_base",
+    "text-similarity-curie-001": "r50k_base",
+    "text-similarity-babbage-001": "r50k_base",
+    "text-similarity-ada-001": "r50k_base",
+    "text-search-davinci-doc-001": "r50k_base",
+    "text-search-curie-doc-001": "r50k_base",
+    "text-search-babbage-doc-001": "r50k_base",
+    "text-search-ada-doc-001": "r50k_base",
+    "code-search-babbage-code-001": "r50k_base",
+    "code-search-ada-code-001": "r50k_base",
+    # open source
+    "gpt2": "gpt2",
+}
+
 
 def api_openai_com(model_name: str) -> OpenAI:
     return OpenAI.create(
         openai_with_api_key(
             "https://api.openai.com/v1/completions", os.environ["OPENAI_API_KEY"]
         ),
-        # This list is taken from
-        # https://github.com/openai/tiktoken/blob/095924e02c85617df6889698d94515f91666c7ea/tiktoken/model.py#L13-L53
-        # and modified, currently to accommodate how text-davinci-003 can actually produce <|fim_...|> tokens.
-        {
-            # chat
-            "gpt-4": "cl100k_base",
-            "gpt-3.5-turbo": "cl100k_base",
-            # text
-            "text-davinci-003": "p50k_edit",
-            "text-davinci-002": "p50k_base",
-            "text-davinci-001": "r50k_base",
-            "text-curie-001": "r50k_base",
-            "text-babbage-001": "r50k_base",
-            "text-ada-001": "r50k_base",
-            "davinci": "r50k_base",
-            "curie": "r50k_base",
-            "babbage": "r50k_base",
-            "ada": "r50k_base",
-            # code
-            "code-davinci-002": "p50k_base",
-            "code-davinci-001": "p50k_base",
-            "code-cushman-002": "p50k_base",
-            "code-cushman-001": "p50k_base",
-            "davinci-codex": "p50k_base",
-            "cushman-codex": "p50k_base",
-            # edit
-            "text-davinci-edit-001": "p50k_edit",
-            "code-davinci-edit-001": "p50k_edit",
-            # embeddings
-            "text-embedding-ada-002": "cl100k_base",
-            # old embeddings
-            "text-similarity-davinci-001": "r50k_base",
-            "text-similarity-curie-001": "r50k_base",
-            "text-similarity-babbage-001": "r50k_base",
-            "text-similarity-ada-001": "r50k_base",
-            "text-search-davinci-doc-001": "r50k_base",
-            "text-search-curie-doc-001": "r50k_base",
-            "text-search-babbage-doc-001": "r50k_base",
-            "text-search-ada-doc-001": "r50k_base",
-            "code-search-babbage-code-001": "r50k_base",
-            "code-search-ada-code-001": "r50k_base",
-            # open source
-            "gpt2": "gpt2",
-        }[model_name],
-        capabilities,
+        OPENAI_MODEL_NAME_TO_TOKENIZER_NAME[model_name],
+        DEFAULT_CAPABILITIES,
         limits.AdaptiveLimiter(),
         {"model": model_name},
+    )
+
+
+def aoai_with_fixed_key(endpoint_url: str, deployment_name: str) -> OpenAI:
+    """Use Azure OpenAI with a fixed API key.
+
+    endpoint_url should look like 'https://name-of-your-aoai-resource.openai.azure.com'.
+    """
+
+    return OpenAI.create(
+        aoai_with_api_key(
+            f"{endpoint_url}/openai/deployments/{deployment_name}/completions?api-version=2022-12-01",
+            os.environ["AOAI_API_KEY"],
+        ),
+        OPENAI_MODEL_NAME_TO_TOKENIZER_NAME[deployment_name],
+        DEFAULT_CAPABILITIES,
+        limits.AdaptiveLimiter(),
     )
 
 
@@ -82,7 +101,12 @@ async def next_logprobs(
     # TODO: Don't hardcode "100" here
     [sampled_tokens] = await self.completions(
         prompt,
-        CompletionsSettings(n=1, max_tokens=1, logprobs=self.capabilities.max_top_logprobs, stop=["<test_for_stop>"]),
+        CompletionsSettings(
+            n=1,
+            max_tokens=1,
+            logprobs=self.capabilities.max_top_logprobs,
+            stop=["<test_for_stop>"],
+        ),
     )
     if len(sampled_tokens) == 0:
         if isinstance(prompt, str):
